@@ -1,4 +1,4 @@
-//packages that i've installed (npm)
+//packages
 const botconfig = require("./botconfig.json");
 const Discord = require("discord.js");
 const db = require('quick.db');
@@ -6,102 +6,65 @@ const math = require("mathjs");
 const bot = new Discord.Client({disableEveryone: true});
 const guildInvites = new Map();
 const mockingcase = require('@strdr4605/mockingcase');
-
 const { isInteger, diag, e } = require("mathjs");
 
 
-//const Canvas = require('canvas');
-
-
- 
+//retired maps
+/*
 bot.snipes = new Map();
 bot.afk = new Map();
 bot.lfg = new Map();
+*/
 
-const dailyCooldown = new Map(); //originally Set()
-const hourlyCooldown = new Map(); // originally Set()
-const weeklyCooldown = new Map();
 
-const jailCooldown = new Map();
 const Duration = require('humanize-duration');
+const dailyCooldown = new Map();
+const hourlyCooldown = new Map();
+const weeklyCooldown = new Map();
+const jailCooldown = new Map();
+const typetestCooldown = new Map();
 
 
-
+//more retired maps
+/*
 const lfgCooldown = new Map();
 const lfgpingCooldown = new Map();
 const spawnCooldown = new Map();
 const startLFGPINGcooldown = new Map();
+*/
 
 
-const typetestCooldown = new Map();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//prefix and token in botconfig file
+//prefix and token in botconfig
 let prefix = botconfig.prefix;
 
 
-
-
-
-
-
-//in console log - bot is online!
 bot.on("ready", async () => {
-    console.log("hi i'm ready");
+    console.log("deployed, now listening...");
 
-    
+//or
 
-
-
-    const channelReady = bot.channels.cache.find(channel => channel.id === "708821607639941280");
+const channelReady = bot.channels.cache.find(channel => channel.id === "708821607639941280");
 
 
-    channelReady.send("**<@382253023709364224>**");
-    let readyEmbed = new Discord.MessageEmbed()
-
-    .setTitle("// BOT READY")
-    .setColor(`#25A9F3`)
-    .setDescription(`bot reset, now listening`)
-    .setTimestamp()
-    .setThumbnail("https://cdn.freebiesupply.com/logos/thumbs/2x/visual-studio-code-logo.png")
-    
-    channelReady.send(readyEmbed);
+channelReady.send("**<@382253023709364224>**");
+let readyEmbed = new Discord.MessageEmbed()
+   .setTitle("// BOT READY")
+   .setColor(`#25A9F3`)
+   .setDescription(`deployed, now listening...`)
+   .setTimestamp()
+   .setThumbnail("https://cdn.freebiesupply.com/logos/thumbs/2x/visual-studio-code-logo.png")
+channelReady.send(readyEmbed);
 
 
-
+//retired variables for a retired command
 /*
-    //FOR TRIVIA
     answered = true;
     cAnswer = "";
     userAnswer = "";
 
- */
+*/
+ 
+ 
     bot.user.setPresence({
         status: 'online',
         activity: {
@@ -109,33 +72,22 @@ bot.on("ready", async () => {
             type: 'PLAYING'
         }
     })
-
-    
 });
 
 
-//START INVITE TRACKING
+//start invite tracking
 bot.on("inviteCreate", async invite => guildInvites.set(invite.guild.id, await invite.guild.fetchInvites()));
 
 bot.on("ready", () => {
-
     bot.guilds.cache.forEach(guild => {
-
         guild.fetchInvites()
             .then(invites => guildInvites.set(guild.id, invites))
             .catch(err => console.log(err));
-
-
     })
-
 });
 
 bot.on("guildMemberAdd", async member => {
-
-
-    let color = ((1 << 24) * Math.random() | 0).toString(16); //generates random hex value
-
-
+    let color = ((1 << 24) * Math.random() | 0).toString(16); //random hex
     const cachedInvites = guildInvites.get(member.guild.id);
     const newInvites = await member.guild.fetchInvites();
     guildInvites.set(member.guild.id, newInvites);
@@ -143,9 +95,8 @@ bot.on("guildMemberAdd", async member => {
     try {
     const usedInvite = newInvites.find(inv => cachedInvites.get(inv.code).uses < inv.uses);
 
-
     const joinembed = new Discord.MessageEmbed()
-    .setTitle("// " + member.user.tag.toUpperCase())
+        .setTitle("// " + member.user.tag.toUpperCase())
         .setDescription(`**invited by:** ${usedInvite.inviter.tag}\n**code:** ${usedInvite.url}\n**times used:** ${usedInvite.uses}`)
         .setThumbnail(`${member.user.displayAvatarURL({dynamic : true})}`)
         .setColor(`#${color}`)
@@ -155,168 +106,104 @@ bot.on("guildMemberAdd", async member => {
     }} catch (err) {
         console.log(err);
     }
-
-
-
-
 });
-//END INVITE TRACKING
+//end invite tracking
 
 
 
-//welcome message
+//start join message
 bot.on("guildMemberAdd", async member => {
 
     const channel = member.guild.channels.cache.find(channel => channel.id === "657679783735328791")
     if(!channel) return;
     const channel2 = member.guild.channels.cache.find(channel => channel.id === "708821607639941280")
     
-
-
-    
     let welcomeembed = new Discord.MessageEmbed()
- .setAuthor("// " + member.user.tag.toUpperCase(), member.user.displayAvatarURL())
- .setImage("https://media.discordapp.net/attachments/466328575231000576/1017918881223946381/IMG_1542.png")
- .setColor("#F073DC")
+        .setAuthor("// " + member.user.tag.toUpperCase(), member.user.displayAvatarURL())
+        .setImage("https://media.discordapp.net/attachments/466328575231000576/1017918881223946381/IMG_1542.png")
+        .setColor("#F073DC")
+    channel.send(welcomeembed)
 
- channel.send(welcomeembed)
-
-     channel.send("<:VVlove:1017920858905378896> **WELCOME** " + `${member}` + "\n<:VVdot:809087399094124624> **SERVER RULES:** <#657680016435314733>\n<:VVdot:809087399094124624> **VALORANT SCRIMS:** <#847148033220935730>\n<:VVdot:809087399094124624> **LOOKING FOR GROUP:** <#816054926673051708>");
-
-
-
-    
- 
+    channel.send("<:VVlove:1017920858905378896> **WELCOME** " + `${member}` + "\n<:VVdot:809087399094124624> **SERVER RULES:** <#657680016435314733>\n<:VVdot:809087399094124624> **VALORANT SCRIMS:** <#847148033220935730>\n<:VVdot:809087399094124624> **LOOKING FOR GROUP:** <#816054926673051708>");
 });
+//end join message
 
 
 
-//WELCOME VERIFY MESSAGE
+//start verify message
 bot.on("guildMemberAdd", async member => {
-
     const verifyChannel = member.guild.channels.cache.find(channel => channel.id === "1017186970616741898");
     if(!verifyChannel) return;
-    
-    
-
-
     verifyChannel.send(`${member}`);
     let welcomeVerify = new Discord.MessageEmbed()
- .setAuthor("// " + member.user.tag.toUpperCase(), member.user.displayAvatarURL())
- .setTitle("**THIS SERVER IS 18+ ONLY**")
- .addField("how to get verified:", "<:VVdot:809087399094124624> send a picture of valid ID, or\n<:VVdot:809087399094124624> wait in voice verify for a mod")
- .addField ("people you can ping to verify you:", "<@382253023709364224> <@271896761176424449> <@442315076792221697> <@277287199085428737> <@214819437478543360> <@288106557789437952>")
- .setFooter("note: if sending ID, you can blur out name, photo, etc.")
- .setColor("#fef08d")
-
- verifyChannel.send(welcomeVerify);
-
-
-
-
-    
- 
+        .setAuthor("// " + member.user.tag.toUpperCase(), member.user.displayAvatarURL())
+        .setTitle("**THIS SERVER IS 18+ ONLY**")
+        .addField("how to get verified:", "<:VVdot:809087399094124624> send a picture of valid ID, or\n<:VVdot:809087399094124624> wait in voice verify for a mod")
+        .addField ("people you can ping to verify you:", "<@382253023709364224> <@271896761176424449> <@442315076792221697> <@277287199085428737> <@214819437478543360> <@288106557789437952>")
+        .setFooter("note: if sending ID, you can blur out name, photo, etc.")
+        .setColor("#fef08d")
+    verifyChannel.send(welcomeVerify);
 });
+//end verify message
 
-//leave message for ugly whores
+
+//start leave message
 bot.on("guildMemberRemove", member=> {
+ 
     const channel = member.guild.channels.cache.find(channel => channel.id === "657679783735328791")
     if(!channel) return;
-
-    
-   let departembed = new Discord.MessageEmbed()
-
-   .setAuthor("// " + member.user.tag.toUpperCase(), member.user.displayAvatarURL())
-   .setColor("#ECE8DF")
-   .setImage("https://media.discordapp.net/attachments/466328575231000576/1017920437868572693/IMG_1545.png");
-
+    let departembed = new Discord.MessageEmbed()
+        .setAuthor("// " + member.user.tag.toUpperCase(), member.user.displayAvatarURL())
+        .setColor("#ECE8DF")
+        .setImage("https://media.discordapp.net/attachments/466328575231000576/1017920437868572693/IMG_1545.png");
     channel.send(departembed);
-
-     channel.send("<:VViron:830211752342847548> **" + `${member.user.tag}` + "** was shit anyway lmao")
-
-
+    channel.send("<:VViron:830211752342847548> **" + `${member.user.tag}` + "** was shit anyway lmao")
 });
+//end leave message
 
 
-
-
-
-
-
-    //confession system
-    bot.on("message", async message => {
-        let messageArray = message.content.split(" ");
+//start confession system
+bot.on("message", async message => {
+ 
+    let messageArray = message.content.split(" ");
     let cmd = messageArray[0];
     let args = messageArray.slice(1);
     let arrayspot1 = messageArray[1];
-
-
     let randomTipChance2 = Math.floor(Math.random() * 7); // 0, 1, 2, 3, 4, 5, 6
     let tipList2 = ["did you know: this bot was coded in 8,381 lines!", "tip: if you're liking this bot, you should give kayla a thanks in the server ;)", "did you know: this bot never lies. ever.", "did you know: the bot is never finished, kayla is constantly adding more features for YOU :)", "tip: have a command suggestion? leave it in the requests channel", "did you know: if you play valorant and main phoenix, kayla might ban you 😃", "tip: having trouble with a coding assignment? ask kayla for help", "did you know: kayla coded this bot in js, but she also knows java, html, and a bit of python", "did you know: the reason why this bot restarts daily is because kayla's too poor to buy a better hosting server 😃", "tip: wish your economy progress on the bot wouldn't reset? donate to kayla so she can upgrade to better hosting servers", "did you know: kayla actually coded a bot before this one! it was pretty bad LOL", "did you know: kayla is always open to constructive criticism! leave an opinion on her bot", "did you know: kayla isn't the only programmer here! asante and stan are skilled coders too :)", "tip: see a problem with the bot? let kayla know!"];
-
     var selectedTip2 = tipList2[(Math.random() * tipList2.length) | 0];
-        
-
     let randomTipChance3 = Math.floor(Math.random() * 10); // 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
-
     let tipList3 = ["did you know: this bot was coded in 8,381 lines!", "tip: if you're liking this bot, you should give kayla a thanks in gen ;)", "did you know: this bot never lies. ever.", "tip: have a command suggestion? leave it in the requests channel", "did you know: these message submissions are entirely anonymous! or are they... 👀"];
     var selectedTip3 = tipList3[(Math.random() * tipList3.length) | 0];
 
-
-
-
-
-    
-
-    //CONFESS COMMAND
+    //start confess command
     if(cmd === `${prefix}confess`) {
-
-        
-        
+     
         if(message.channel.type !== "dm") return message.channel.send("you have to use this in dms dummy");
-
-
-
-
         if (message.channel.type === "dm") {
-
-        
-                if(message.author.bot) return;
-
-
-
-                var confession = message.content.substring(message.content.indexOf(" ") + 1, message.content.length);
-
-        //rgb way but i still cant get the color array to work :/
+        if(message.author.bot) return;
+        var confession = message.content.substring(message.content.indexOf(" ") + 1, message.content.length);
         let rvalue = Math.floor(Math.random() * 256);
         let gvalue = Math.floor(Math.random() * 256);
         let bvalue = Math.floor(Math.random() * 256); 
 
-                        if(confession === `${prefix}confess`) {
-
+        if(confession === `${prefix}confess`) {
+         
             let stop2embed = new Discord.MessageEmbed()
-
-            .setTitle("i don't think that's how it works...")
-            .setColor("#FF0000")
-            .addField("**missing argument**", "try using `*confess <message>`")
-            
+                .setTitle("i don't think that's how it works...")
+                .setColor("#FF0000")
+                .addField("**missing argument**", "try using `*confess <message>`")
             return message.channel.send(stop2embed);
-
-
-                        } else if (confession.length >= 300) {
+         
+        } else if (confession.length >= 300) {
+         
             let stop2embed = new Discord.MessageEmbed()
-
-            .setTitle("sorry, your message is too long :(")
-            .setColor("#FF0000")
-            .addField("**character limit reached**", "your message has to be less than 300 characters for it to send to the confessions channel")
-
+                .setTitle("sorry, your message is too long :(")
+                .setColor("#FF0000")
+                .addField("**character limit reached**", "your message has to be less than 300 characters for it to send to the confessions channel")
             return message.channel.send(stop2embed);
-
-        
-                    } else {
-
-      //.setColor(`#${color}`);
-
+         
+        } else {
 
             //change to a certain channel id
             const channel = bot.channels.cache.get('709101840494755910');
