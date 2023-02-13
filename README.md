@@ -1,1 +1,6 @@
-Personal Discord server bot that I began developing in 2019. Constantly being revised and having new features added while having deprecated ones removed.
+Personal Discord server bot that I began developing in 2019. Always in revision and having new features added while constantly adapting to new versions of **DiscordJS** and other libraries.
+
+**Details:**
+- This bot currently has 59 executable commands and can perform a handful of other event-based actions, including sending join/leave messages, logging and counting invites and role assigning.
+- This bot is utilizing a handful of **npm** packages for added code efficiency, including **Quick.db**, **Math.js** and others.
+- 
