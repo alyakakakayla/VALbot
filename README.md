@@ -12,3 +12,4 @@ This bot uses the glorious Discord.js **v12.5.3** library and was first created 
 - user role handling and reading
 - reaction collectors for vote polls
 - error catching that writes to predefined log channel IDs
+- personal (but playful) attacks directed to certain friends <3
