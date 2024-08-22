@@ -1,24 +1,30 @@
 /*
-Not the most professional project to showcase, but all the good (and the bad) within these files has become a major part of my coding career development journey. It's also made me a laughing stock for my friends, so it's a win-win for me.
-
-This bot uses the glorious Discord.js v12.5.3 library and was first created when I was 15 years old as a small joke among a small group of friends in a small Discord server. It currently features over 50 finished commands and tens more in the making, with room for even more sometime in the future. I do not regularly update this bot, as this code was written years ago when I was a child. I could barely understand what I was trying to write half the time back then, and I bet the same stands for now. This bot currently only supports commands in one particular guild, as channel IDs are predefined to come from this one guild. Because the Discord.js library being used is deprecated, slash commands do not work here. (Yet.)
+This bot uses Discord.js v12.5.3 and started up before 2020 as an inside joke among friends in a small Discord server (please excuse the language!). It now has over 50 finished commands and features with more than 20 currently in the testing and debugging phase, with much room for more in the forseeable future. This bot currently only supports commands in one particular server, as all channel variables are initialized or declared with set IDs from this one server.
 
 Some features included:
+- various node packages including mathjs, humanize-duration
+- map and array collections
+- async functions
+- try/catch statements paired with console logging
+- database managers using better-sqlite3
+- mongoose api
 
-view guild and user info
-minigames like type test race
-AFK status commands
-plenty of random math commands like magic 8 ball, dice roll
-economy feature supporting user balances and inventories
-invite code/URL tracking
-user role handling and reading
-reaction collectors for vote polls
-error catching that writes to predefined log channel IDs
-personal (but playful) attacks directed to certain friends <3
-*/
+Just a few of the things this bot can do on Discord:
+- role handling
+- invite code tracking
+- member tracking
+- error catching sent to log channels
+- message and reaction collectors
+- currency systems
+- nickname moderation
+- multi-user interactives (like ship command)
+- afk statuses
+- type speed tracking
 
-//require
-const Discord = require("discord.js"); //v12.0.0
+Certain commands and features like the member count tracker, invite tracker, and role handler may be changed in the future to support performance in other servers, but most of the commands on this bot will remain exclusive to its original server. Members of other servers who still want access to these particular commands will be redirected to this server.
+*/ 
+
+const Discord = require("discord.js"); //v12.5.3
 const bot = new Discord.Client({
     disableEveryone: true
 });
@@ -32,8 +38,9 @@ const {
 } = require("mathjs");
 const botconfig = require("./botconfig.json");
 const Duration = require('humanize-duration');
+const { MessageFlags } = require("discord.js");
 const prefix = botconfig.prefix;
-const fs = require('fs');
+//const fs = require('fs');
 
 //maps
 const guildInvites = new Map();
@@ -49,8 +56,8 @@ const lfgpingCooldown = new Map();
 const spawnCooldown = new Map();
 const startLFGPINGcooldown = new Map();
 const typetestCooldown = new Map();
-const embedMessages = new Map();
-
+const startGAMEPINGcooldown = new Map();
+const gamepingCooldown = new Map();
 
 //send errors to console + console channel
 bot.on("error", console.error);
@@ -73,7 +80,7 @@ async function sendErrorToChannel(client, errorMessage, message) {
     }
 }
 
-//log startup in console
+//startup actions
 bot.on("ready", async () => {
     console.log("BOT RESTARTED, NOW ONLINE");
 
@@ -87,6 +94,14 @@ bot.on("ready", async () => {
             type: 'PLAYING'
         }
     })
+
+    const countChannel = bot.channels.cache.find(channel => channel.id === "1144698183394545855");
+    countChannel.join().then(connection => {
+        channelReady.send("<@382253023709364224> 🔊 **joined count channel**")
+      }).catch(e => {
+        console.error(e);
+        sendErrorToChannel(bot, e.message);
+      });
 
 });
 
@@ -157,10 +172,12 @@ bot.on("guildMemberAdd", async member => {
 
     channel.send("<:VVlove:1017920858905378896> **WELCOME,** " + `${member}` + "\n<:VVdot:809087399094124624> **RULES + MAP:** <#657680016435314733> + <#709083826890080287>\n<:VVdot:809087399094124624> **VALORANT SCRIMS:** <#847148033220935730>\n<:VVdot:809087399094124624> **LOOKING FOR GROUP:** <#816054926673051708>");
 
+    await bot.channels.cache.get('1144698183394545855').setName(`${member.guild.memberCount}`); //☺
+
 });
 
 //leave message
-bot.on("guildMemberRemove", member => {
+bot.on("guildMemberRemove", async member => {
     const channel = member.guild.channels.cache.find(channel => channel.id === "657679783735328791")
     if (!channel) return;
 
@@ -169,8 +186,8 @@ bot.on("guildMemberRemove", member => {
         .setColor("#ECE8DF")
         .setImage("https://media.discordapp.net/attachments/466328575231000576/1017920437868572693/IMG_1545.png");
     channel.send(departembed);
-
     channel.send("<:VViron:830211752342847548> **" + `${member.user.tag}` + "** was shit anyway lmao")
+    await bot.channels.cache.get('1144698183394545855').setName(`${member.guild.memberCount}`);
 
 });
 
@@ -187,7 +204,7 @@ bot.on("message", async message => {
     let tipList2 = ["did you know: this bot was coded in 4,984 lines!", "tip: if you're liking this bot, you should give kayla a thanks in gen ;)", "did you know: this bot never lies. ever.", "did you know: these message submissions are entirely anonymous! or are they... 👀"];
     var selectedTip2 = tipList2[(Math.random() * tipList2.length) | 0];
 
-    //CONFESS COMMAND
+    //confess command
     if (cmd === `${prefix}confess`) {
 
         if (message.channel.type !== "dm") return message.channel.send("you have to use this in dms dummy");
@@ -270,31 +287,47 @@ bot.on("message", async message => {
 
 });
 
-//STARBOARD
+//starboard / pins
+const embedMessages = new Map();
+const pinnedMessages = new Set();
+
 bot.on('messageReactionAdd', async (reaction, user) => {
+    const fetchedMessage = await reaction.message.fetch();
+    const emoji = reaction.emoji;
 
-    if (reaction.emoji.name === '💀') {
-        // fetch the message
-        const fetchedMessage = await reaction.message.fetch();
-        // get the specific reaction by emoji
-        const skullReaction = fetchedMessage.reactions.cache.get('💀');
+    if (user.bot) return; 
 
-        if (skullReaction) {
-            const skullCount = skullReaction.count;
-            let pinsChannel = bot.channels.cache.get('995378714026188800');
+    const messageContent = fetchedMessage.content;
+    const originalChannelID = fetchedMessage.channel.id;
+    const originalMessageURL = `https://discordapp.com/channels/${fetchedMessage.guild.id}/${originalChannelID}/${fetchedMessage.id}`;
 
-            if (skullCount >= 3) {
+    if (!emoji.guild && emoji.id) return;
+    
+    if (fetchedMessage.attachments.size > 0) {
+        imageUrl = fetchedMessage.attachments.first().url;
+    } else if (fetchedMessage.embeds.length > 0) {
+        const imageEmbed = fetchedMessage.embeds.find(embed => embed.type === 'image');
+        if (imageEmbed) {
+            imageUrl = imageEmbed.url;
+        }
+    }
 
-                const messageContent = fetchedMessage.content;
-                const messageAuthorAvatar = fetchedMessage.author.avatarURL();
-                const isAuthorBot = fetchedMessage.author.bot;
-                const messageAuthor = fetchedMessage.author.username;
-                const originalChannelID = fetchedMessage.channel.id;
-                const originalMessageURL = `https://discordapp.com/channels/${fetchedMessage.guild.id}/${originalChannelID}/${fetchedMessage.id}`;
+    // Ignored channels
+    if (originalChannelID === "995378714026188800") return;
+    if (originalChannelID === "731957047809277972") return;
+    if (originalChannelID === "657680016435314733") return;
+    if (originalChannelID === "709083826890080287") return;
+    if (originalChannelID === "1134611228187172894") return;
+    const pinsChannel = bot.channels.cache.get('995378714026188800');
 
+    if (reaction.count >= 3) {
+
+        if (!pinnedMessages.has(fetchedMessage.id) && !embedMessages.has(fetchedMessage.id)) {
+            
+            if (messageContent === "") {
+
+                const emojiText = emoji.toString(); // Convert emoji to string
                 let imageUrl = null;
-
-                if (isAuthorBot) return;
 
                 if (fetchedMessage.attachments.size > 0) {
                     imageUrl = fetchedMessage.attachments.first().url;
@@ -305,58 +338,58 @@ bot.on('messageReactionAdd', async (reaction, user) => {
                     }
                 }
 
-                //ignored channels
-                if (originalChannelID === "995378714026188800") return;
-                if (originalChannelID === "731957047809277972") return;
-                if (originalChannelID === "657680016435314733") return;
-                if (originalChannelID === "709083826890080287") return;
-                if (originalChannelID === "1134611228187172894") return;
+                let starboardembed = new Discord.MessageEmbed()
+                    .setAuthor(fetchedMessage.author.username, fetchedMessage.author.avatarURL())
+                    .setTitle(`${emojiText} ${reaction.count} | <#${fetchedMessage.channel.id}>`)
+                    .setColor("#ff4655")
+                    .setImage(imageUrl)
+                    .setDescription(`[click to see original message](${fetchedMessage.url})`);
 
-                if (embedMessages.has(fetchedMessage.id)) {
-                    const embedMessage = embedMessages.get(fetchedMessage.id);
-                    const embed = new Discord.MessageEmbed(embedMessage.embeds[0]) // Clone the existing embed
-                        .setTitle("💀 " + skullCount + " | <#" + originalChannelID + ">");
-                    embedMessage.edit(embed);
-                    embedMessages.set(fetchedMessage.id, embedMessage);
-                } else {
+                const embedMessage = await pinsChannel.send(starboardembed);
+                embedMessages.set(fetchedMessage.id, embedMessage);
+                pinnedMessages.add(fetchedMessage.id);
 
-                    if (messageContent === "") {
-                        let starboardembed = new Discord.MessageEmbed()
-                            .setAuthor(messageAuthor, messageAuthorAvatar)
-                            .setTitle("💀 " + skullCount + " | <#" + originalChannelID + ">")
-                            .setColor("#ff4655")
-                            .setImage(imageUrl)
-                            .setDescription(`[click to see original message](${originalMessageURL})`)
+                const respondChannel = fetchedMessage.channel;
+                const followUpMessage = `${fetchedMessage.author}, your message was voted as pin-worthy ${emojiText} find it in <#995378714026188800> (<#1133623600721694811> for access)`;
+                respondChannel.send(followUpMessage);
 
-                        const embedMessage = await pinsChannel.send(starboardembed);
-                        embedMessages.set(fetchedMessage.id, embedMessage);
+            } else {
 
-                        // send a follow-up message mentioning the original author
-                        const respondChannel = fetchedMessage.channel;
-                        const originalAuthor = fetchedMessage.author;
-                        const followUpMessage = `${originalAuthor}, your message was voted as pin-worthy 💀 find it in <#995378714026188800>`;
-                        respondChannel.send(followUpMessage);
-                    } else {
-                        let starboardembed = new Discord.MessageEmbed()
-                            .setAuthor(messageAuthor, messageAuthorAvatar)
-                            .setTitle("💀 " + skullCount + " | <#" + originalChannelID + ">")
-                            .setColor("#ff4655")
-                            .setImage(imageUrl)
-                            .addField(`"${messageContent}"`, `[click to see original message](${originalMessageURL})`)
+                const emojiText = emoji.toString(); // Convert emoji to string
+                let imageUrl = null;
 
-                        const embedMessage = await pinsChannel.send(starboardembed);
-                        embedMessages.set(fetchedMessage.id, embedMessage);
-
-                        // Send a follow-up message mentioning the original author
-                        const respondChannel = fetchedMessage.channel;
-                        const originalAuthor = fetchedMessage.author;
-                        const followUpMessage = `${originalAuthor}, your message was voted as pin-worthy 💀 find it in <#995378714026188800>`;
-                        respondChannel.send(followUpMessage);
-
+                if (fetchedMessage.attachments.size > 0) {
+                    imageUrl = fetchedMessage.attachments.first().url;
+                } else if (fetchedMessage.embeds.length > 0) {
+                    const imageEmbed = fetchedMessage.embeds.find(embed => embed.type === 'image');
+                    if (imageEmbed) {
+                        imageUrl = imageEmbed.url;
                     }
                 }
 
+                let starboardembed = new Discord.MessageEmbed()
+                    .setAuthor(fetchedMessage.author.username, fetchedMessage.author.avatarURL())
+                    .setTitle(`${emojiText} ${reaction.count} | <#${fetchedMessage.channel.id}>`)
+                    .setColor("#ff4655")
+                    .setImage(imageUrl)
+                    .addField(`"${messageContent}"`, `[click to see original message](${originalMessageURL})`);
+
+                const embedMessage = await pinsChannel.send(starboardembed);
+                embedMessages.set(fetchedMessage.id, embedMessage);
+                pinnedMessages.add(fetchedMessage.id);
+
+                const respondChannel = fetchedMessage.channel;
+                const followUpMessage = `${fetchedMessage.author}, your message was voted as pin-worthy ${emojiText} find it in <#995378714026188800> (<#1133623600721694811> for access)`;
+                respondChannel.send(followUpMessage);
+
             }
+
+        } else if (pinnedMessages.has(fetchedMessage.id) && embedMessages.has(fetchedMessage.id)) {
+            const embedMessage = embedMessages.get(fetchedMessage.id);
+            const embed = new Discord.MessageEmbed(embedMessage.embeds[0])
+                .setTitle(`${emoji} ${reaction.count} | <#${fetchedMessage.channel.id}>`);
+            embedMessage.edit(embed);
+            embedMessages.set(fetchedMessage.id, embedMessage);
         }
     }
 });
@@ -491,7 +524,7 @@ bot.on("message", async message => {
             return;
         } else {
             message.delete();
-            (message.channel.send('**' + message.author.username + "** no server links idot"))
+            (message.channel.send('**' + message.author.username + "** no server links dummy"))
             .then(message => {
                 message.delete({
                     timeout: 4000
@@ -503,7 +536,7 @@ bot.on("message", async message => {
 
         }
     }
-
+    
     //afk command
     if (cmd === `${prefix}afk`) {
         if (message.channel.type === "dm") return;
@@ -607,6 +640,11 @@ bot.on("message", async message => {
         db.delete(message.author.id + '.message');
     }
 
+    //valorant news announcements
+    if (message.channel.id === "847908733760831528" && message.author.id === "847909963712299049") {
+        message.channel.send("✉️ **NEW VALORANT NEWS!** read up <@&733404270304428032>");
+    }
+
     //server setup commands, only i can use
     if (cmd === `${prefix}modrulessetup`) {
 
@@ -614,13 +652,23 @@ bot.on("message", async message => {
 
             message.channel.send("https://cdn.discordapp.com/attachments/708821607639941280/1140210484063240283/5c79a37079aa1fe9db0846efcb8bde1b.png");
 
-            message.channel.send("<:VVvct:1140056134485541036> if you want to do something, **just run it by kayla first** she'll probably say yes\n<:VVvct:1140056134485541036> yes it might be funny but **don't harass people with your mod perms**\n<:VVvct:1140056134485541036> if kayla doesn't like what you're doing **she can always just demote you lol**")
+            message.channel.send("<:VVvct:1140056134485541036> if you want to do something, **just run it by kayla first** she'll probably say yes\n<:VVvct:1140056134485541036> it might be funny but **don't harass people with your mod perms**\n<:VVvct:1140056134485541036> if you seem to be abusing power **you can always just get demoted lol**")
 
             message.channel.send("https://cdn.discordapp.com/attachments/708821607639941280/1140210674442698773/2e6f5ba108c329c3fcb9a2c21dbfd441.png");
 
-            message.channel.send("<:VVdot:809087399094124624> `/ban` for raids, being under 13, and other tos violations\n<:VVdot:809087399094124624> `/mute` people if they're flooding or spamming\n<:VVdot:809087399094124624> __don't__ invite, kick or edit any bots or their commands\n<:VVdot:809087399094124624> __don't__ delete invites made by <@302050872383242240>\n<:VVdot:809087399094124624> __don't__ ever ping `@everyone` or `@here`\n<:VVdot:809087399094124624> you can ping other roles if you have a valid reason to like event reminders\n<:VVdot:809087399094124624> __don't__ edit, move, create or delete any roles\n<:VVdot:809087399094124624> __don't__ create or delete any emotes, stickers or sounds")
+            message.channel.send("<:VVdot:809087399094124624> `/ban` for raids, being under 13, and other obvious tos violations\n<:VVdot:809087399094124624> `/mute` people if they're intentionally flooding or spamming outside of <#661705313329872946>\n<:VVdot:809087399094124624> __don't__ edit any bot commands/permissions or invite/kick any bots\n<:VVdot:809087399094124624> __don't__ ever ping `@everyone` or `@here`\n<:VVdot:809087399094124624> you can ping other roles if you have a valid reason, such as event reminders\n<:VVdot:809087399094124624> __don't__ edit/move or create/delete any roles\n<:VVdot:809087399094124624> __don't__ edit/create/delete any emotes, stickers or sounds")
 
         }
+    }
+
+    if (cmd ===`${prefix}channelsetup`) {
+        if (message.author.id === '382253023709364224') {
+            
+            message.channel.send("https://media.discordapp.net/attachments/708821607639941280/1133632561466310696/image.png");
+            message.channel.send(':u7981: <:VVdot:809087399094124624> **<#948619169673412610>**  //  youtube\n:u6708: <:VVdot:809087399094124624> **<#718606483008258108>**  //  giveaways\n:u6307: <:VVdot:809087399094124624> **<#995378714026188800>**  //  pins\n:sa: <:VVdot:809087399094124624> **<#709101840494755910>** //  confess\n:om_symbol: <:VVdot:809087399094124624> **<#733047370429890570>**  //  selfies\n:u5272: <:VVdot:809087399094124624> **<#742343439944908861>**  //  clips\n:u55b6: <:VVdot:809087399094124624> **<#765986060089294899>**  //  art')
+            message.channel.send(':chart: <:VVdot:809087399094124624> **<#734526660530929676>**  //  nsfw')
+        }
+
     }
 
     if (cmd === `${prefix}mapsetup`) {
@@ -629,7 +677,7 @@ bot.on("message", async message => {
 
             message.channel.send("https://cdn.discordapp.com/attachments/708821607639941280/1133622878252826675/image.png");
 
-            message.channel.send("<:VVvct:1140056134485541036> **MAIN**\n      <:VVdot:809087399094124624> **<#657680016435314733>**  //  server rules\n      <:VVdot:809087399094124624> **<#710009723306639421>**  //  announcements\n      <:VVdot:809087399094124624> **<#724751100716253245>**  //  personal roles\n      <:VVdot:809087399094124624> **<#657679783735328791>**  //  main chat\n      <:VVdot:809087399094124624> **<#1133839360828125255>**  //  draw together\n\n<:VVvct:1140056134485541036> **VALORANT**\n      <:VVdot:809087399094124624> **<#847148033220935730>**  //  VALORANT scrims\n      <:VVdot:809087399094124624> **<#847908733760831528>**  //  VALORANT updates\n      <:VVdot:809087399094124624> **<#816054926673051708>**  //  get pings to play\n      <:VVdot:809087399094124624> **<#814310050653929473>**  //  find VALORANT teammates\n\n<:VVvct:1140056134485541036> **EXTRA**\n      <:VVdot:809087399094124624> **<#948619169673412610>**  //  our server yt channel\n      <:VVdot:809087399094124624> **<#718606483008258108>**  //  free stuff\n      <:VVdot:809087399094124624> **<#995378714026188800>**  //  reaction starboard\n      <:VVdot:809087399094124624> **<#709101840494755910>** //  secret messages\n      <:VVdot:809087399094124624> **<#733047370429890570>**  //  pics of you\n      <:VVdot:809087399094124624> **<#742343439944908861>**  //  game captures\n      <:VVdot:809087399094124624> **<#765986060089294899>**  //  creative showcase\n      <:VVdot:809087399094124624> **<#1133623600721694811>**  //  see hidden channels")
+            message.channel.send("<:VVvct:1140056134485541036> **MAIN**\n      <:VVdot:809087399094124624> **<#731957047809277972>**  //  boosts\n      <:VVdot:809087399094124624> **<#657680016435314733>**  //  server rules\n      <:VVdot:809087399094124624> **<#710009723306639421>**  //  announcements\n      <:VVdot:809087399094124624> **<#749674536575696956>**  //  game roles\n      <:VVdot:809087399094124624> **<#724751100716253245>**  //  personal roles\n      <:VVdot:809087399094124624> **<#657679783735328791>**  //  main chat\n      <:VVdot:809087399094124624> **<#1251340434509402163>**  //  main threads\n\n<:VVvct:1140056134485541036> **VALORANT**\n      <:VVdot:809087399094124624> **<#847148033220935730>**  //  VALORANT scrims\n      <:VVdot:809087399094124624> **<#847908733760831528>**  //  VALORANT updates\n      <:VVdot:809087399094124624> **<#816054926673051708>**  //  get pings to play\n      <:VVdot:809087399094124624> **<#814310050653929473>**  //  find VALORANT teammates\n\n<:VVvct:1140056134485541036> **EXTRA**\n      <:VVdot:809087399094124624> **<#1133839360828125255>**  //  draw with us\n      <:VVdot:809087399094124624> **<#948619169673412610>**  //  our server yt channel\n      <:VVdot:809087399094124624> **<#718606483008258108>**  //  free stuff\n      <:VVdot:809087399094124624> **<#995378714026188800>**  //  reaction starboard\n      <:VVdot:809087399094124624> **<#709101840494755910>** //  secret messages\n      <:VVdot:809087399094124624> **<#733047370429890570>**  //  pics of you\n      <:VVdot:809087399094124624> **<#742343439944908861>**  //  game captures\n      <:VVdot:809087399094124624> **<#765986060089294899>**  //  creative showcase\n      <:VVdot:809087399094124624> **<#1133623600721694811>**  //  see hidden channels")
 
         }
     }
@@ -701,10 +749,10 @@ bot.on("message", async message => {
 
         if (message.author.id === '382253023709364224') {
 
-            message.channel.send("https://cdn.discordapp.com/attachments/749674536575696956/787750175166431262/image0.gif")
-
             message.channel.send("https://cdn.discordapp.com/attachments/723691178977001494/841298977995227146/gameroles.png");
-            message.channel.send("<:VVpepecrydistort:748298293401878619> <:VVdot:809087399094124624> **valorant**\n<:VVsadge:831507292784164874> <:VVdot:809087399094124624> **apex**\n<:VVyikes:786597019606974474> <:VVdot:809087399094124624> **overwatch**\n<:VVstan:733028845753466951> <:VVdot:809087399094124624> **csgo**\n<:VVpepeweird:838796134386368512> <:VVdot:809087399094124624> **minecraft // bedrock**\n<:VVpepehype:733867827756400691> <:VVdot:809087399094124624> **minecraft // java**\n<:VVpeepoL:734459303167262741> <:VVdot:809087399094124624> **league of legends**\n<:VVpepehang:788215918803157042> <:VVdot:809087399094124624> **roblox**\n<:VVfeelsslowman:732308456656338975> <:VVdot:809087399094124624> **among us**")
+            message.channel.send("<:VVvct:1140056134485541036> **TOP PLAYED**\n      <:VVvalorant:1226383116751343646> <:VVdot:809087399094124624> <@&736376787461734443>\n      <:VVoverwatch:1226387529838624768> <:VVdot:809087399094124624> <@&758734886445777006>\n      <:VVleagueoflegends:1226388442452328448> <:VVdot:809087399094124624> <@&749677019222245406>\n      <:VVrainbowsix:1226384330696163328> <:VVdot:809087399094124624> <@&1226389462628433920>")
+
+            message.channel.send("<:VVvct:1140056134485541036> **OTHER GAMES**\n      <:VVroblox:1226383208174719087> <:VVdot:809087399094124624> <@&749677113644285962>\n      <:VVminecraft:1226383180089786439> <:VVdot:809087399094124624> <@&787741920343883777>\n      <:VVwizard101:1226390495840829450> <:VVdot:809087399094124624> <@&921187677389344819>\n      <:VVlethalcompany:1226383268908372028> <:VVdot:809087399094124624> <@&1226389723472199773>\n      <:VVpalworld:1226384691972538389> <:VVdot:809087399094124624> <@&1226389927466631280>\n      <:VVplato:1226387092192493660> <:VVdot:809087399094124624> <@&950499064548573254>")
 
         }
     }
@@ -735,16 +783,16 @@ bot.on("message", async message => {
             message.channel.send("https://media.discordapp.net/attachments/723691178977001494/839127735451648100/agent.png");
 
             message.channel.send("<:VVduelist:1082800228316491776>");
-            message.channel.send("<:VVphoenix:857067832717344778> <:VVdot:809087399094124624> **phoenix**\n<:VVjett:857067815701970964> <:VVdot:809087399094124624> **jett**\n<:VVreyna:857068002645508153> <:VVdot:809087399094124624> **reyna**\n<:VVraze:857067910127681567> <:VVdot:809087399094124624> **raze**\n<:VVyoru:857067369943531521> <:VVdot:809087399094124624> **yoru**\n<:VVneon:931179725777403915> <:VVdot:809087399094124624> **neon**");
+            message.channel.send("<:VVphoenix:857067832717344778> <:VVdot:809087399094124624> **phoenix**\n<:VVjett:857067815701970964> <:VVdot:809087399094124624> **jett**\n<:VVreyna:857068002645508153> <:VVdot:809087399094124624> **reyna**\n<:VVraze:857067910127681567> <:VVdot:809087399094124624> **raze**\n<:VVyoru:857067369943531521> <:VVdot:809087399094124624> **yoru**\n<:VVneon:931179725777403915> <:VVdot:809087399094124624> **neon**\n<:VViso:1171156743313702982> <:VVdot:809087399094124624> **iso**");
 
             message.channel.send("<:VVcontroller:1082800210150961223>");
-            message.channel.send("<:VVbrimstone:857067245284229120> <:VVdot:809087399094124624> **brimstone**\n<:VVviper:857067313760829480> <:VVdot:809087399094124624> **viper**\n<:VVomen:857067891651641375> <:VVdot:809087399094124624> **omen**\n<:VVastra:857067420015656980> <:VVdot:809087399094124624> **astra**\n<:VVharbor:1035640817756405790> <:VVdot:809087399094124624> **harbor**");
+            message.channel.send("<:VVbrimstone:857067245284229120> <:VVdot:809087399094124624> **brimstone**\n<:VVviper:857067313760829480> <:VVdot:809087399094124624> **viper**\n<:VVomen:857067891651641375> <:VVdot:809087399094124624> **omen**\n<:VVastra:857067420015656980> <:VVdot:809087399094124624> **astra**\n<:VVharbor:1035640817756405790> <:VVdot:809087399094124624> **harbor**\n<:VVclove:1225631397134340207> <:VVdot:809087399094124624> **clove**");
 
             message.channel.send("<:VVinitiator:1082800248797282384>");
             message.channel.send("<:VVsova:857067710135140382> <:VVdot:809087399094124624> **sova**\n<:VVbreach:857067474514870302> <:VVdot:809087399094124624> **breach**\n<:VVskye:857068097580302346> <:VVdot:809087399094124624> **skye**\n<:VVkayo:857068381290758144> <:VVdot:809087399094124624> **kay/o**\n<:VVfade:973661290960658493> <:VVdot:809087399094124624> **fade**\n<:VVgekko:1082797124212752554> <:VVdot:809087399094124624> **gekko**");
 
             message.channel.send("<:VVsentinel:1082800263842250914>");
-            message.channel.send("<:VVwidejoy:925551980322107452> <:VVdot:809087399094124624> **killjoy**\n<:VVcypher:857067594158178335> <:VVdot:809087399094124624> **cypher**\n<:VVsage:857068029430726656> <:VVdot:809087399094124624> **sage**\n<:VVchamber:910951475969130516> <:VVdot:809087399094124624> **chamber**");
+            message.channel.send("<:VVwidejoy:925551980322107452> <:VVdot:809087399094124624> **killjoy**\n<:VVcypher:857067594158178335> <:VVdot:809087399094124624> **cypher**\n<:VVsage:857068029430726656> <:VVdot:809087399094124624> **sage**\n<:VVchamber:910951475969130516> <:VVdot:809087399094124624> **chamber**\n<:VVdeadlock:1125477791798923335> <:VVdot:809087399094124624> **deadlock**");
 
         }
     }
@@ -761,10 +809,10 @@ bot.on("message", async message => {
             .setThumbnail("https://cdn.discordapp.com/attachments/657679783735328791/751222027423055992/image0.jpg")
             .setColor(message.member.displayHexColor)
             .addField("<:VVvct:1140056134485541036> **VALORANT** ∙ 1", "`lfgping`")
-            .addField("<:VVchampions:992866466909126746> **FUN** ∙ 10", "`confess`, `fortune`, `say`, `mock`, `8ball`, `ship`, `pp`, `rate`, `typetest`, `typetestlist`")
-            .addField("<:VVmasters:992866501168205824> **UTILITY** ∙ 6", "`avatar`, `botinfo`, `serverinfo`, `calc`, `ping`, `clear`")
+            .addField("<:VVchampions:992866466909126746> **FUN** ∙ 11", "`gameping`, `confess`, `fortune`, `say`, `mock`, `8ball`, `ship`, `pp`, `rate`, `typetest`, `typetestlist`") 
+            .addField("<:VVmasters:992866501168205824> **TOOLS** ∙ 6", "`avatar`, `botinfo`, `serverinfo`, `calc`, `ping`, `clear`")
             .addField("<:VVchallengers:992867585706164284> **EXTRA** ∙ 9", "`afk`, `pins`, `choose`, `flip`, `roll`, `f`, `kittyreview`, `bingus`, `custom`")
-            .addField("<:VVgamechangers:1134381959905292371> **[ALPHA] ECONOMY** ∙ 11", "`spawn`, `start`, `balance`, `inventory`, `weekly`, `daily`, `hourly`, `shop`, `buy`, `give`, `rob`")
+            .addField("<:VVgamechangers:1134381959905292371> **💰 ECONOMY** ∙ 11", "`spawn`, `start`, `balance`, `inventory`, `weekly`, `daily`, `hourly`, `shop`, `buy`, `give`, `rob`")
 
             .setFooter("this bot was coded by alyakakakayla#0");
 
@@ -954,7 +1002,7 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
         let helpfortuneembed = new Discord.MessageEmbed()
 
-            .setDescription("yes i am totally a legitimate fortune teller :sparkles:" + "\n**usage:** `" + `${prefix}fortune` + "`")
+            .setDescription("i promise my fortunes are totally legit :smiley:" + "\n**usage:** `" + `${prefix}fortune` + "`")
             .setTitle('// FORTUNE COMMAND')
 
             .setColor(message.member.displayHexColor)
@@ -969,7 +1017,7 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
         let helppinsembed = new Discord.MessageEmbed()
 
-            .setDescription("sends server highlights to <#995378714026188800>" + "\n**usage:** get 3+ \"💀\" reactions on a message")
+            .setDescription("sends server highlights to <#995378714026188800>" + "\n**usage:** get 3+ of the same reaction on a message")
             .setTitle('// PINS FEATURE')
 
             .setColor(message.member.displayHexColor)
@@ -983,7 +1031,7 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
         let helpbingusembed = new Discord.MessageEmbed()
 
-            .setDescription("SENDS A RANDOM BINGUS GIF!!! <:VVbingus:833690189037043742>" + "\n**usage:** `" + `${prefix}bingus` + "`")
+            .setDescription("sends a random bingus gif <:VVbingus:833690189037043742>" + "\n**usage:** `" + `${prefix}bingus` + "`")
             .setTitle('// BINGUS COMMAND')
 
             .setColor(message.member.displayHexColor)
@@ -997,7 +1045,7 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
         let helpkittyreviewembed = new Discord.MessageEmbed()
 
-            .setDescription("SENDS A RANDOM KITTY REVIEW!!! :cat:" + "\n**usage:** `" + `${prefix}kittyreview` + "`")
+            .setDescription("sends a random kitty review gif :cat:" + "\n**usage:** `" + `${prefix}kittyreview` + "`")
             .setTitle('// KITTYREVIEW COMMAND')
 
             .setColor(message.member.displayHexColor)
@@ -1010,7 +1058,7 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
         let helptypetestlistembed = new Discord.MessageEmbed()
 
-            .setDescription("shows a list of VV's typetest highscores" + "\n**usage:** `" + `${prefix}typetestlist` + "`")
+            .setDescription("shows a list of VV's current typetest highscores" + "\n**usage:** `" + `${prefix}typetestlist` + "`")
             .setTitle('// TYPETESTLIST COMMAND')
 
             .setColor(message.member.displayHexColor)
@@ -1024,7 +1072,7 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
         let helptypetestembed = new Discord.MessageEmbed()
 
-            .setDescription("think you can type fast? i'll give you a random prompt to type out and then we'll see if you're a fast typer or not :smirk:" + "\n**usage:** `" + `${prefix}typetest` + "`")
+            .setDescription("let's see how fast you can work your fingers :smirk:" + "\n**usage:** `" + `${prefix}typetest` + "`")
             .setTitle('// TYPETEST COMMAND')
 
             .setColor(message.member.displayHexColor)
@@ -1047,13 +1095,28 @@ if(message.content === `${prefix}help snipe`) {
         return message.channel.send(helplfgpingembed);
     }
 
+    //657679783735328791
+    if (message.content === `${prefix}help gameping`) {
+        if (message.channel.type === "dm") return;
+        if (message.author.bot) return;
+        let helpgamepingembed = new Discord.MessageEmbed()
+
+            .setDescription("lets you ping one of our nine game roles besides valorant" + "\n**usage:** `" + `${prefix}gameping` + "`\n(can't be used outside of <#657679783735328791>)")
+            .setTitle('// GAMEPING COMMAND')
+
+            .setColor(message.member.displayHexColor)
+            .setFooter("requested by " + message.author.tag);
+
+        return message.channel.send(helpgamepingembed);
+    }
+
     if (message.content === `${prefix}help spawn`) {
         if (message.channel.type === "dm") return;
         if (message.author.bot) return;
         let helpspawnembed = new Discord.MessageEmbed()
 
             .setDescription("grants a certain amount of money to the user" + "\n**usage:** `" + `${prefix}spawn` + "`\n(owners only)")
-            .setTitle('// SPAWN COMMAND')
+            .setTitle('// 💰 SPAWN COMMAND')
 
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
@@ -1065,8 +1128,8 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
         let helpinventoryembed = new Discord.MessageEmbed()
 
-            .setDescription("shows all your precious items" + "\n**usage:** `" + `${prefix}inventory` + "` or `" + `${prefix}inventory <user>` + "`")
-            .setTitle('// INVENTORY COMMAND')
+            .setDescription("shows a list of all your precious items" + "\n**usage:** `" + `${prefix}inventory` + "` or `" + `${prefix}inventory <user>` + "`")
+            .setTitle('// 💰 INVENTORY COMMAND')
             .addField("aliases", "`" + `${prefix}inv` + "`")
 
             .setColor(message.member.displayHexColor)
@@ -1080,8 +1143,8 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
         let helpbuyembed = new Discord.MessageEmbed()
 
-            .setDescription("what you do at the shop...duh" + "\n**usage:** `" + `${prefix}buy <item number>` + "`")
-            .setTitle('// BUY COMMAND')
+            .setDescription("you use this at the shop...duh" + "\n**usage:** `" + `${prefix}buy <item number>` + "`")
+            .setTitle('// 💰 BUY COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
 
@@ -1094,7 +1157,7 @@ if(message.content === `${prefix}help snipe`) {
         let helpshopembed = new Discord.MessageEmbed()
 
             .setDescription("shows all purchasable items in the shop <:VVpepehype:733867827756400691>" + "\n**usage:** `" + `${prefix}shop` + "`")
-            .setTitle('// SHOP COMMAND')
+            .setTitle('// 💰 SHOP COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
 
@@ -1106,9 +1169,9 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
         let helpbalanceembed = new Discord.MessageEmbed()
 
-            .setDescription("allows you to check how much money you have (probably none cuz you're homeless :smiley:)" + "\n**usage:** `" + `${prefix}balance` + "` or `" + `${prefix}balance <user>` + "`")
+            .setDescription("allows you to check how much money you have (if you even have any :skull:)" + "\n**usage:** `" + `${prefix}balance` + "` or `" + `${prefix}balance <user>` + "`")
             .addField("aliases", "`" + `${prefix}bal` + "`")
-            .setTitle('// BALANCE COMMAND')
+            .setTitle('// 💰 BALANCE COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
 
@@ -1121,7 +1184,7 @@ if(message.content === `${prefix}help snipe`) {
         let helpweeklyembed = new Discord.MessageEmbed()
 
             .setDescription("gives you a random amount of coins between 0 and 1500 once a week" + "\n**usage:** `" + `${prefix}weekly` + "`")
-            .setTitle('// WEEKLY COMMAND')
+            .setTitle('// 💰 WEEKLY COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
 
@@ -1134,7 +1197,7 @@ if(message.content === `${prefix}help snipe`) {
         let helphourlyembed = new Discord.MessageEmbed()
 
             .setDescription("gives you a random amount of coins between 0 and 100 once an hour" + "\n**usage:** `" + `${prefix}hourly` + "`\n(vips only)")
-            .setTitle('// HOURLY COMMAND')
+            .setTitle('// 💰 HOURLY COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
 
@@ -1146,7 +1209,7 @@ if(message.content === `${prefix}help snipe`) {
         let helpdailyembed = new Discord.MessageEmbed()
 
             .setDescription("gives you a random amount of coins between 0 and 500 once a day" + "\n**usage:** `" + `${prefix}daily` + "`")
-            .setTitle('// DAILY COMMAND')
+            .setTitle('// 💰 DAILY COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
 
@@ -1157,8 +1220,8 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
         let helpstartembed = new Discord.MessageEmbed()
 
-            .setDescription("creates your economy account <:VVpepehype:733867827756400691> you have to use this before you can use any other economy commands" + "\n**usage:** `" + `${prefix}start` + "`")
-            .setTitle('// START COMMAND')
+            .setDescription("creates your economy account <:VVpepehype:733867827756400691> you have to use this before you can use any other 💰 economy commands" + "\n**usage:** `" + `${prefix}start` + "`")
+            .setTitle('// 💰 START COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
 
@@ -1195,7 +1258,7 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
         let helpcalcembed = new Discord.MessageEmbed()
 
-            .setDescription("use this command to get me to do your math homework for you\nsupports numbers, big numbers, complex numbers, fractions, units, strings, arrays, and matrices" + "\n**usage:** `" + `${prefix}calc <expression>` + "`")
+            .setDescription("use this command to get me to do your math homework for you :smiley:\nsupports numbers, big numbers, complex numbers, fractions, units, strings, arrays, and matrices" + "\n**usage:** `" + `${prefix}calc <expression>` + "`")
             .setTitle('// CALC COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
@@ -1234,7 +1297,7 @@ if(message.content === `${prefix}help snipe`) {
 
         let helpppembed = new Discord.MessageEmbed()
 
-            .setDescription("gives an accurate peepee description :hotdog:" + "\n**usage:** `" + `${prefix}pp` + "` or `" + `${prefix}pp <@user>` + "`")
+            .setDescription("gives a completely accurate peepee description :hotdog:" + "\n**usage:** `" + `${prefix}pp` + "` or `" + `${prefix}pp <@user>` + "`")
             .setTitle('// PP COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
@@ -1247,7 +1310,7 @@ if(message.content === `${prefix}help snipe`) {
 
         let helprateembed = new Discord.MessageEmbed()
 
-            .setDescription("gives an accurate rating on your looks" + "\n**usage:** `" + `${prefix}rate` + "` or `" + `${prefix}rate <@user>` + "`")
+            .setDescription("gives a completely accurate opinion on your looks :smiley:" + "\n**usage:** `" + `${prefix}rate` + "` or `" + `${prefix}rate <@user>` + "`")
             .setTitle('// RATE COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
@@ -1260,7 +1323,7 @@ if(message.content === `${prefix}help snipe`) {
 
         let helpclearembed = new Discord.MessageEmbed()
 
-            .setDescription("deletes a bunch of messages for you" + "\n**usage:** `" + `${prefix}clear <number>` + "`\n(mods only)")
+            .setDescription("bulk deletes messages for you" + "\n**usage:** `" + `${prefix}clear <number>` + "`\n(mods only)")
             .setTitle('// CLEAR COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
@@ -1300,8 +1363,8 @@ if(message.content === `${prefix}help snipe`) {
 
         let helprobembed = new Discord.MessageEmbed()
 
-            .setDescription("for when you're too lazy to make an income yourself :smirk:" + "\n**usage:** `" + `${prefix}rob` + " <@user>`\n(without added buffs from the shop it only works 10% of the time)")
-            .setTitle('// ROB COMMAND')
+            .setDescription("oh no, the job market is terrible! :scream_cat:" + "\n**usage:** `" + `${prefix}rob` + " <@user>`\n(without added buffs from the shop, it only works 10% of the time)")
+            .setTitle('// 💰 ROB COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
 
@@ -1314,7 +1377,7 @@ if(message.content === `${prefix}help snipe`) {
         let helpgiveembed = new Discord.MessageEmbed()
 
             .setDescription("allows you to give money (not items) to someone else" + "\n**usage:** `" + `${prefix}give` + " <@user>`")
-            .setTitle('// GIVE COMMAND')
+            .setTitle('// 💰 GIVE COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
 
@@ -1393,7 +1456,7 @@ if(message.content === `${prefix}help snipe`) {
 
         let helpfembed = new Discord.MessageEmbed()
 
-            .setDescription("use this when someone deserves a pat on the back" + "\n**usage:** `" + `${prefix}f` + "` or `" + `${prefix}f` + " <messsage>`")
+            .setDescription("use this when someone deserves a pat on the back :thumbsup:" + "\n**usage:** `" + `${prefix}f` + "` or `" + `${prefix}f` + " <messsage>`")
             .setTitle('// F COMMAND')
             .setColor(message.member.displayHexColor)
             .setFooter("requested by " + message.author.tag);
@@ -1449,7 +1512,7 @@ if(message.content === `${prefix}help snipe`) {
         if (message.author.bot) return;
 
         let target = message.mentions.users.first();
-        if (!target) return message.channel.send("psst, this command doesn't work without pinging someone dummy");
+        if (!target) return message.channel.send("psst, you have to ping someone dummy");
 
         let targetBalance = db.get(`user.${target.id}.balance`)
         const cooldown = jailCooldown.get(message.author.id); // 1 hour in jail
@@ -1464,7 +1527,7 @@ if(message.content === `${prefix}help snipe`) {
             })
             message.channel.send("**" + message.author.username + "**, you're still in jail for another `" + timeremaining + "`")
         } else if (!target) {
-            message.channel.send("if you're gonna rob someone you should at least be smart... you have to say who you want to rob (use `" + `${prefix}rob` + " <@user>`)");
+            message.channel.send("but who do you want to rob... (use `" + `${prefix}rob` + " <@user>`)");
         } else {
 
             if ((!db.get(`user.${target.id}`))) {
@@ -1480,9 +1543,9 @@ if(message.content === `${prefix}help snipe`) {
             } else {
                 let chance = Math.floor(Math.random() * 10) //0, 1, 2, 3, 4, 5, 6, 7, 8, 9
                 if (targetBalance == 0 || null) {
-                    message.channel.send("how are you gonna steal from someone who's LITERALLY broke LMAO (no offense **" + target.username + "**)")
+                    message.channel.send("you can't rob someone who's literally broke (no offense **" + target.username + "**)")
                 } else if (targetBalance <= 50) {
-                    message.channel.send("what are you gonna steal from **" + target.username + "**, 2 dollars? find a richer target numb nuts")
+                    message.channel.send("what are you gonna steal from **" + target.username + "**, 2 dollars? find a richer target")
                 } else {
                     if (db.has(`user.${message.author.id}.inv`, "`gun` :gun:")) {
 
@@ -1520,12 +1583,12 @@ if(message.content === `${prefix}help snipe`) {
 
                                 db.add(`user.${message.author.id}.balance`, amountGained);
                                 db.subtract(`user.${target.id}.balance`, amountGained)
-                                message.channel.send("LOL you just stole from someone in jail for the same crime :sob: you received `" + amountGained + "` coins from **" + target.username + "**")
+                                message.channel.send("you just committed the same crime they did :sob: you received `" + amountGained + "` coins from **" + target.username + "**")
                             } else {
                                 let amountGained = Math.floor(targetBalance / 10);
                                 db.add(`user.${message.author.id}.balance`, amountGained);
                                 db.subtract(`user.${target.id}.balance`, amountGained)
-                                message.channel.send(":flushed: woah...that actually worked? you just stole `" + amountGained + "` coins from **" + target.username + "**")
+                                message.channel.send("...that actually worked? you just stole `" + amountGained + "` coins from **" + target.username + "**")
                             }
 
                         } else {
@@ -1568,8 +1631,8 @@ if(message.content === `${prefix}help snipe`) {
                         units: ['m', 's'],
                         round: true
                     })
-                    message.channel.send("**" + message.author.username + "**, you already did that in the past hour haha try again later :sunglasses: (`" + remaining2 + "` left)").catch(err => {
-                        message.channel.send("oops, something went wrong... try again later maybe?? idk")
+                    message.channel.send("**" + message.author.username + "**, you already did that in the past hour, try again later! (`" + remaining2 + "` left)").catch(err => {
+                        message.channel.send("oops, something went wrong... try again later")
                         console.log(err)
                         sendErrorToChannel(bot, err.message, message);
                     })
@@ -1642,8 +1705,8 @@ if(message.content === `${prefix}help snipe`) {
                 })
 
 
-                message.channel.send("**" + message.author.username + "**, you already did this today nice try :clown: come back tomorrow (`" + remaining + "` left)").catch(err => {
-                    message.channel.send("oops, something went wrong... try again later maybe?? idk")
+                message.channel.send("**" + message.author.username + "**, you already did that today, try again tomorrow! (`" + remaining + "` left)").catch(err => {
+                    message.channel.send("oops, something went wrong... try again later")
                     console.log(err)
                     sendErrorToChannel(bot, err.message, message);
                 })
@@ -1703,8 +1766,8 @@ if(message.content === `${prefix}help snipe`) {
                     round: true
                 })
 
-                message.channel.send("**" + message.author.username + "**, yikes it hasn't been a full week yet <:VV_wheeze:784129860762337290> come back in a few days LOL (`" + remaining + "` left)").catch(err => {
-                    message.channel.send("oops, something went wrong... try again later maybe?? idk")
+                message.channel.send("**" + message.author.username + "**, you already did that this week, try again next! (`" + remaining + "` left)").catch(err => {
+                    message.channel.send("oops, something went wrong... try again later")
                     console.log(err)
                     sendErrorToChannel(bot, err.message, message);
                 })
@@ -1809,7 +1872,7 @@ if(message.content === `${prefix}help snipe`) {
                     round: true
                 })
 
-                message.channel.send("this person is currently being taught a lesson in prison rn :weary: do not disturb pls! (`" + targettimeremaining + "` left)")
+                message.channel.send("this person is currently locked up :weary: do not disturb pls! (`" + targettimeremaining + "` left)")
 
             } else {
 
@@ -1837,7 +1900,7 @@ if(message.content === `${prefix}help snipe`) {
 
         let receiver = message.mentions.users.first();
 
-        if (!receiver) return message.channel.send("psst, this command doesn't work without pinging someone dummy");
+        if (!receiver) return message.channel.send("psst, you need to ping someone dummy");
 
         const receivercooldown = jailCooldown.get(receiver.id);
         const iminjail = jailCooldown.get(message.author.id); // 1 hour in jail
@@ -1860,7 +1923,7 @@ if(message.content === `${prefix}help snipe`) {
             message.channel.send("you didn't create an economy account yet :frowning: (you can make one by typing `" + `${prefix}start` + "`)");
 
         } else if (!receiver) {
-            message.channel.send("psst, this command doesn't work without pinging someone dummy (use `" + `${prefix}give` + " <@user>`)");
+            message.channel.send("psst, you need to ping someone dummy (use `" + `${prefix}give` + " <@user>`)");
 
         } else if (receiver) {
 
@@ -1883,7 +1946,7 @@ if(message.content === `${prefix}help snipe`) {
 
             } else if (receivercooldown) {
 
-                message.channel.send("**" + message.author.username + "**, sorry to inform you but your friend is in jail rn for being an idiot and they can't accept any gifts :smiley: (`" + receivertimeremaining + "` left)")
+                message.channel.send("**" + message.author.username + "**, sorry to inform you but your friend is in jail and they can't accept any gifts :smiley: (`" + receivertimeremaining + "` left)")
 
             } else {
                 let authorBalance = db.get(`user.${message.author.id}.balance`);
@@ -1906,13 +1969,13 @@ if(message.content === `${prefix}help snipe`) {
                                 //begin checks here
                                 if ((isNaN(numb)) || (!isInteger(numb))) {
 
-                                    message.channel.send("a 2nd grader could've answered this question better than you :smiley: whole numbers only")
+                                    message.channel.send("whole numbers only pls")
 
                                 } else if (numb <= 20) {
                                     if (numb <= 0) {
-                                        message.channel.send('what are u doing')
+                                        message.channel.send('what are you doing lol')
                                     } else if (numb > authorBalance) {
-                                        message.channel.send("buddy you don't even have that much")
+                                        message.channel.send("you don't even have that much lol")
                                     } else { //success block
 
                                         message.channel.send("wow, you're cheap. i'll take out `" + numb + "` coins from your bal and give them to **" + receiver.username + "**");
@@ -1921,16 +1984,16 @@ if(message.content === `${prefix}help snipe`) {
                                     }
                                 } else if (numb >= 100) {
                                     if (numb > authorBalance) {
-                                        message.channel.send("buddy you don't even have that much")
+                                        message.channel.send("you don't even have that much lol")
                                     } else { //success block
-                                        message.channel.send("omg you're so generous!!! i'll take out `" + numb + "` coins from your bal and give them to **" + receiver.username + "**");
+                                        message.channel.send("how generous :heart_eyes: i'll take out `" + numb + "` coins from your bal and give them to **" + receiver.username + "**");
                                         db.subtract(`user.${message.author.id}.balance`, numb)
                                         db.add(`user.${receiver.id}.balance`, numb)
 
                                     }
                                 } else {
                                     if (numb > authorBalance) {
-                                        message.channel.send("buddy you don't even have that much")
+                                        message.channel.send("you don't even have that much lol")
                                     } else { //success block
                                         message.channel.send("coolio :sunglasses: i'll take out `" + numb + "` coins from your bal and give them to **" + receiver.username + "**");
                                         db.subtract(`user.${message.author.id}.balance`, numb)
@@ -2045,7 +2108,7 @@ if(message.content === `${prefix}help snipe`) {
             } else {
 
                 let balanceembed = new Discord.MessageEmbed()
-                    .setDescription("**" + message.author.username + "**'s balance: `" + `${authorBalance}` + "` coins, lol broke ass")
+                    .setDescription("**" + message.author.username + "**'s balance: `" + `${authorBalance}` + "` coins, broke ass")
                     .setColor(message.member.displayHexColor)
                     .setFooter("requested by " + message.author.tag);
 
@@ -2080,12 +2143,12 @@ if(message.content === `${prefix}help snipe`) {
                     units: ['m', 's'],
                     round: true
                 })
-                message.channel.send("this person is currently being taught a lesson in prison rn :weary: do not disturb pls! (`" + targettimeremaining + "` left)")
+                message.channel.send("this person is currently locked up :weary: do not disturb pls! (`" + targettimeremaining + "` left)")
 
             } else {
 
                 let balanceembed = new Discord.MessageEmbed()
-                    .setDescription("**" + target.username + "**'s balance: `" + `${targetBalance}` + "` coins, lol broke ass")
+                    .setDescription("**" + target.username + "**'s balance: `" + `${targetBalance}` + "` coins, broke ass")
                     .setColor(message.member.displayHexColor)
                     .setFooter("requested by " + message.author.tag);
 
@@ -2126,12 +2189,12 @@ if(message.content === `${prefix}help snipe`) {
                 .setDescription("use `" + `${prefix}buy` + " <item number>` to buy something")
                 .addField("`1.` chicken nugget - `100,000,000` coins", "<a:VV_chickennugget:758849124433920060> the most sacred thing god put on this earth")
                 .addField("`2.` printer - `5,000` coins", ":printer: when combined with paper it can print you extra money")
-                .addField("`3.` game coach - `4,000` coins", ":trophy: hire a knock off tenz from a sketchy fiver account to train you")
+                .addField("`3.` game coach - `4,000` coins", ":trophy: hire a knock off tenz from a sketchy fiverr account to train you")
                 .addField("`4.` aimbot - `1,000` coins", ":dart: good for when you're hardstuck iron 1 but don't feel like hiring a coach")
                 .addField("`5.` gun - `1,000` coins", ":gun: greatly increases the success rate when you try to rob someone (40%)")
                 .addField("`6.` knife - `500` coins", ":knife: slightly increases the success rate when you try to rob someone (20%)")
                 .addField("`7.` paper - `20` coins", "<:VV_item_paper:813833655406297178> kill some trees, get some cash")
-                .addField("`8.` happy meal - `20` coins", ":hamburger: the perfect meal to match your childish ass personality")
+                .addField("`8.` happy meal - `20` coins", ":hamburger: the perfect meal for baby :pleading_face:")
                 .setFooter("page 1/1 - requested by " + message.author.tag);
 
             message.channel.send(shoppg1);
@@ -2753,6 +2816,8 @@ bot.on('messageReactionAdd', (reaction, user) => {
         if (message.author.bot) return;
         let msg = message.content.substring(message.content.indexOf(" ") + 1, message.content.length);
         let user1 = message.mentions.users.first();
+        const kaylaID = "382253023709364224";
+        const squeegID = "271896761176424449";
 
         if (msg === `${prefix}ship`) {
 
@@ -2765,7 +2830,19 @@ bot.on('messageReactionAdd', (reaction, user) => {
 
             return message.channel.send(stopembed);
 
-        } else if (msg.length >= 100) {
+        } else if (!user1) {
+
+            let stopembed = new Discord.MessageEmbed()
+
+                .setTitle("you did it wrong :neutral_face:")
+                .setColor("#FF0000")
+                .addField("**missing argument**", "try using `*ship <@user>`")
+                .setFooter("requested by " + message.author.tag);
+
+            return message.channel.send(stopembed);
+
+        } else
+        if (msg.length >= 100) {
 
             let stop2embed = new Discord.MessageEmbed()
 
@@ -2775,7 +2852,30 @@ bot.on('messageReactionAdd', (reaction, user) => {
 
             return message.channel.send(stop2embed);
 
+        } else if (message.author.id === kaylaID && user1.id === squeegID) {
+            let shipembed = new Discord.MessageEmbed()
 
+                .setTitle("// SHIP :revolving_hearts:")
+                .setColor(message.member.displayHexColor)
+                .setDescription("**> <@" + message.author + ">**\n**> " + msg + "**")
+                .addField("compatibility:", "∞ % <:VVlove:1017920858905378896>")
+                .setFooter("requested by " + message.author.tag);
+
+            message.channel.send(shipembed);
+
+        
+        } else if (message.author.id === squeegID && user1.id === kaylaID) {
+            let shipembed = new Discord.MessageEmbed()
+
+                .setTitle("// SHIP :revolving_hearts:")
+                .setColor(message.member.displayHexColor)
+                .setDescription("**> <@" + message.author + ">**\n**> " + msg + "**")
+                .addField("compatibility:", "∞ % <:VVlove:1017920858905378896>")
+                .setFooter("requested by " + message.author.tag);
+
+            message.channel.send(shipembed);
+
+        
         } else if (user1 === message.author) {
 
             let stopembed = new Discord.MessageEmbed()
@@ -3340,21 +3440,14 @@ bot.on('messageReactionAdd', (reaction, user) => {
                         .setFooter(trueAuthorTag + "'s fortune");
 
                     message.edit(editembed);
-
                 });
-
             });
-
     }
 
     //typetest command
     if (cmd === `${prefix}typetestlist`) {
         const difarray = [];
-
-
         bot.users.cache.forEach(user => {
-
-
             if (db.has(user.id + '.highscore')) {
                 if (db.get(user.id + '.highscore')) {
                     difarray.push(user);
@@ -3501,18 +3594,14 @@ bot.on('messageReactionAdd', (reaction, user) => {
                                     message.channel.send("**" + message.author.username + "**, youuuu typed it wrong and therefore you suck");
                                     db.delete(message.author.id + '.typetest');
                                 }
-
                             }
-
                         })
                         .catch(collected => {
                             message.channel.send(`**${message.author.username}**, 60 seconds have passed sooo i'll just give you a score of **bad** :smiley:`)
                             db.delete(message.author.id + '.typetest');
 
                         })
-
                 })
-
         }
     }
 
@@ -3533,7 +3622,7 @@ bot.on('messageReactionAdd', (reaction, user) => {
             .addField("**name**", "`" + `${bot.user.tag}` + "`")
             .addField("**created on**", "05.09.2020")
             .addField("**created by**", "<@382253023709364224>")
-            .addField("**total current commands**", "59")
+            .addField("**total current commands**", "60")
             .setFooter("requested by " + message.author.tag);
 
         return message.channel.send(botembed);
@@ -3576,7 +3665,6 @@ bot.on('messageReactionAdd', (reaction, user) => {
             message.channel.send(mathembed);
         }
     }
-
 
     //typerace command
     /*
@@ -4166,7 +4254,8 @@ let currentStage = stages[0];
                 .setTitle("// " + sentence.toUpperCase() + "'S AVATAR")
                 .setColor(message.member.displayHexColor)
                 .setImage(message.author.displayAvatarURL({
-                    dynamic: true
+                    dynamic: true,
+                    size: 512
                 }))
                 .setFooter("requested by " + message.author.tag);
 
@@ -4180,7 +4269,8 @@ let currentStage = stages[0];
                 .setTitle("// " + sentence2.toUpperCase() + "'S AVATAR")
                 .setColor(message.member.displayHexColor)
                 .setImage(target.displayAvatarURL({
-                    dynamic: true
+                    dynamic: true,
+                    size: 512
                 }))
                 .setFooter("requested by " + message.author.tag);
 
@@ -4919,6 +5009,205 @@ let currentStage = stages[0];
     }
     */
 
+    //GAME PING COMMAND
+    const overwatchNum = message.guild.roles.cache.find(role => role.name === "Overwatch");
+    const leagueNum = message.guild.roles.cache.find(role => role.name === "League of Legends");
+    const siegeNum = message.guild.roles.cache.find(role => role.name === "Rainbow Six Siege");
+    const robloxNum = message.guild.roles.cache.find(role => role.name === "Roblox");
+    const minecraftNum = message.guild.roles.cache.find(role => role.name === "Minecraft");
+    const wizNum = message.guild.roles.cache.find(role => role.name === "Wizard101");
+    const lethalNum = message.guild.roles.cache.find(role => role.name === "Lethal Company");
+    const palworldNum = message.guild.roles.cache.find(role => role.name === "Palworld");
+    const platoNum = message.guild.roles.cache.find(role => role.name === "Plato Mobile Games");
+    const cooldownforSTARTgameping = startGAMEPINGcooldown.get(message.author.id);
+    const cooldownforgameping = gamepingCooldown.get(message.author.id);
+
+    if (cooldownforSTARTgameping) return;
+
+    if (cmd === `${prefix}gameping`) {
+        if (message.channel.type === "dm") return;
+        if (message.author.bot) return;
+
+        if (cooldownforgameping) {
+
+            const timeremaining = Duration(cooldownforgameping - Date.now(), {
+                units: ['m', 's'],
+                round: true
+            })
+
+            return message.channel.send("**" + message.author.username + "**, you just pinged everyone shut up (you can ping again in `" + timeremaining + "`)").then(message => {
+                message.delete({
+                    timeout: 5000
+                })
+            }).catch(err => {
+                console.log(err)
+                sendErrorToChannel(bot, err.message, message);
+            })
+
+        } else {
+
+            startGAMEPINGcooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.16666666666);
+            setTimeout(() => {
+                startGAMEPINGcooldown.delete(message.author.id)
+            }, 1000 * 60 * 60 * 0.00277778);
+
+            /*if (!message.member.roles.cache.some(role => role.name === 'VALORANT')) {
+
+                let noembed = new Discord.MessageEmbed()
+                    .setDescription("you have to have the <@&736376787461734443> role to use this command dummy (get it in <#749674536575696956>)")
+                    .setColor(message.member.displayHexColor)
+                    .setFooter("requested by " + message.author.tag)
+
+                message.channel.send(noembed);
+
+            } else*/
+            if (message.channel.id !== "657679783735328791") {
+
+                let noembed = new Discord.MessageEmbed()
+                    .setDescription("you have to use this command in the <#657679783735328791> channel dum dum")
+                    .setColor(message.member.displayHexColor)
+                    .setFooter("requested by " + message.author.tag)
+
+                message.channel.send(noembed);
+
+            } else {
+
+                let filter = n => n.author.id === message.author.id;
+
+                let lfgembed = new Discord.MessageEmbed()
+                    .setTitle("// GAME ROLE PING")
+                    .addField("type a number to ping that role", "\n(looking for <@&736376787461734443>? read <#816054926673051708>)\n<:VVdot:809087399094124624>`1`  //  <@&758734886445777006> (`" + overwatchNum.members.size + "` members)\n<:VVdot:809087399094124624>`2`  //  <@&749677019222245406> (`" + leagueNum.members.size + "` members)\n<:VVdot:809087399094124624>`3`  //  <@&1226389462628433920> (`" + siegeNum.members.size + "` members)\n<:VVdot:809087399094124624>`4`  //  <@&749677113644285962> (`" + robloxNum.members.size + "` members)\n<:VVdot:809087399094124624>`5`  //  <@&787741920343883777> (`" + minecraftNum.members.size + "` members)\n<:VVdot:809087399094124624>`6`  //  <@&921187677389344819> (`" + wizNum.members.size + "` members)\n<:VVdot:809087399094124624>`7`  //  <@&1226389723472199773> (`" + lethalNum.members.size + "` members)\n<:VVdot:809087399094124624>`8`  //  <@&1226389927466631280> (`" + palworldNum.members.size + "` members)\n<:VVdot:809087399094124624>`9`  //  <@&950499064548573254> (`" + platoNum.members.size + "` members)")
+                    .setFooter("requested by " + message.author.tag + " • respond in 10 seconds")
+                    .setColor(message.member.displayHexColor);
+
+                message.channel.send(lfgembed)
+                    .then(() => {
+
+                        //filter
+                        message.channel.awaitMessages(filter, {
+                                max: 1,
+                                time: 10000,
+                                errors: ['time']
+                            })
+                            .then(message => {
+                                message = message.first()
+                                let numb = message.content;
+                                //begin checks here 
+                                if ((isNaN(numb)) || (!isInteger(numb))) {
+                                    message.channel.send("**" + message.author.username + "** lol what")
+
+                                } else if (numb <= 0) {
+                                    message.channel.send("type a number between `1` and `9` next time :smiley:")
+
+                                } else if (numb >= 10) {
+                                    message.channel.send("type a number between `1` and `9` next time :smiley:");
+
+                                } else if (numb == 1) {
+
+                                    message.channel.send("<:VVoverwatch:1226387529838624768> <@&758734886445777006> **" + message.author.tag + "** wants to play overwatch <:VVnotlikethis:823917572763680778>");
+                                    gamepingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    gamepingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                } else if (numb == 2) {
+                                    message.channel.send("<:VVleagueoflegends:1226388442452328448> <@&749677019222245406> **" + message.author.tag + "** wants to play league of legends <:VVnotlikethis:823917572763680778>");
+                                    gamepingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    gamepingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                } else if (numb == 3) {
+                                    message.channel.send("<:VVrainbowsix:1226384330696163328> <@&1226389462628433920> **" + message.author.tag + "** wants to play rainbow six siege <:VVnotlikethis:823917572763680778>");
+                                    gamepingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    gamepingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                }
+                                else if (numb == 4) {
+                                    message.channel.send("<:VVroblox:1226383208174719087> <@&749677113644285962> **" + message.author.tag + "** wants to play roblox <:VVnotlikethis:823917572763680778>");
+                                    gamepingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    gamepingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                }
+                                else if (numb == 5) {
+                                    message.channel.send("<:VVminecraft:1226383180089786439> <@&787741920343883777> **" + message.author.tag + "** wants to play minecraft <:VVnotlikethis:823917572763680778>");
+                                    gamepingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    gamepingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                }
+                                else if (numb == 6) {
+                                    message.channel.send("<:VVwizard101:1226390495840829450> <@&921187677389344819> **" + message.author.tag + "** wants to play wizard101 <:VVnotlikethis:823917572763680778>");
+                                    gamepingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    gamepingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                }
+                                else if (numb == 7) {
+                                    message.channel.send("<:VVlethalcompany:1226383268908372028> <@&1226389723472199773> **" + message.author.tag + "** wants to play lethal company <:VVnotlikethis:823917572763680778>");
+                                    gamepingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    gamepingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                }
+                                else if (numb == 8) {
+                                    message.channel.send("<:VVpalworld:1226384691972538389> <@&1226389927466631280> **" + message.author.tag + "** wants to play palworld <:VVnotlikethis:823917572763680778>");
+                                    gamepingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    gamepingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                }
+                                else if (numb == 9) {
+                                    message.channel.send("<:VVplato:1226387092192493660> <@&950499064548573254> **" + message.author.tag + "** wants to play plato <:VVnotlikethis:823917572763680778>");
+                                    gamepingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    gamepingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                }
+                            
+
+                            })
+                            .catch(collected => {
+                                message.channel.send(`nvm try again later you take too long`)
+                            })
+
+                    })
+            }
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     //cooldowns
     const unratedNum = message.guild.roles.cache.find(role => role.name === "LFG // UNRATED");
     const compNum = message.guild.roles.cache.find(role => role.name === "LFG // COMPETITIVE");
@@ -4981,7 +5270,7 @@ let currentStage = stages[0];
 
                 let lfgembed = new Discord.MessageEmbed()
                     .setTitle("// VALORANT LFG ROLE PING")
-                    .addField("type ONE corresponding number to ping that role", "\n<:VVdot:809087399094124624>`1`  //  <@&816064013552582707> (`" + unratedNum.members.size + "` members)\n<:VVdot:809087399094124624>`2`  //  <@&816064196608786474> (`" + compNum.members.size + "` members)\n<:VVdot:809087399094124624>`3`  //  <@&816064466964971560> (`" + customNum.members.size + "` members)\n<:VVdot:809087399094124624>`4`  //  <@&816064637815619587> (`" + otherNum.members.size + "` members)")
+                    .addField("type a number to ping that role", "\n<:VVdot:809087399094124624>`1`  //  <@&816064013552582707> (`" + unratedNum.members.size + "` members)\n<:VVdot:809087399094124624>`2`  //  <@&816064196608786474> (`" + compNum.members.size + "` members)\n<:VVdot:809087399094124624>`3`  //  <@&816064466964971560> (`" + customNum.members.size + "` members)\n<:VVdot:809087399094124624>`4`  //  <@&816064637815619587> (`" + otherNum.members.size + "` members)")
                     .setFooter("requested by " + message.author.tag + " • respond in 10 seconds")
                     .setColor(message.member.displayHexColor);
 
@@ -5010,21 +5299,33 @@ let currentStage = stages[0];
                                 } else if (numb == 1) {
 
                                     message.channel.send("<:VVdot:809087399094124624> <@&816064013552582707> **" + message.author.tag + "** wants to play valorant <:VVnotlikethis:823917572763680778>");
-
-                                } else if (numb == 2) {
-                                    message.channel.send("<:VVdot:809087399094124624> <@&816064196608786474> **" + message.author.tag + "** wants to play valorant <:VVnotlikethis:823917572763680778>");
-
-                                } else if (numb == 3) {
-                                    message.channel.send("<:VVdot:809087399094124624> <@&816064466964971560> **" + message.author.tag + "** wants to play valorant <:VVnotlikethis:823917572763680778>");
-
-                                } else if (numb == 4) {
-                                    message.channel.send("<:VVdot:809087399094124624> <@&816064637815619587> **" + message.author.tag + "** wants to play valorant <:VVnotlikethis:823917572763680778>");
-
-                                }
-                                lfgpingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                    lfgpingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
                                 setTimeout(() => {
                                     lfgpingCooldown.delete(message.author.id)
                                 }, 1000 * 60 * 60 * 0.0833333);
+
+                                } else if (numb == 2) {
+                                    message.channel.send("<:VVdot:809087399094124624> <@&816064196608786474> **" + message.author.tag + "** wants to play valorant <:VVnotlikethis:823917572763680778>");
+                                    lfgpingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    lfgpingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                } else if (numb == 3) {
+                                    message.channel.send("<:VVdot:809087399094124624> <@&816064466964971560> **" + message.author.tag + "** wants to play valorant <:VVnotlikethis:823917572763680778>");
+                                    lfgpingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    lfgpingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                } else if (numb == 4) {
+                                    message.channel.send("<:VVdot:809087399094124624> <@&816064637815619587> **" + message.author.tag + "** wants to play valorant <:VVnotlikethis:823917572763680778>");
+                                    lfgpingCooldown.set(message.author.id, Date.now() + 1000 * 60 * 60 * 0.0833333);
+                                setTimeout(() => {
+                                    lfgpingCooldown.delete(message.author.id)
+                                }, 1000 * 60 * 60 * 0.0833333);
+
+                                }
 
                             })
                             .catch(collected => {
